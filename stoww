@@ -1,0 +1,108 @@
+#!/bin/sh
+
+# stoww - A wrapper for GNU Stow
+# This script handles pre/post-installation and removal scripts,
+# manages a .stowed flag file, and ensures certain files are not stowed.
+
+# Function to display help message
+show_help() {
+    cat << EOF
+Usage: stoww [OPTIONS] PACKAGE...
+
+A wrapper for GNU Stow with additional features.
+
+Options:
+  -S, --stow         Stow the package(s)
+  -D, --delete       Unstow the package(s)
+  -R, --restow       Restow the package(s)
+  -h, --help         Display this help and exit
+
+All other options are passed directly to GNU Stow.
+EOF
+}
+
+# Initialize variables
+OPERATION="stow"  # Default operation
+STOW_ARGS=""
+PACKAGES=""
+
+# Parse command-line arguments
+while [ "$#" -gt 0 ]; do
+    case "$1" in
+        -D|--delete)
+            OPERATION="unstow"
+            STOW_ARGS="$STOW_ARGS $1"
+            ;;
+        -S|--stow)
+            OPERATION="stow"
+            STOW_ARGS="$STOW_ARGS $1"
+            ;;
+        -R|--restow)
+            OPERATION="restow"
+            STOW_ARGS="$STOW_ARGS $1"
+            ;;
+        -h|--help)
+            show_help
+            exit 0
+            ;;
+        -*)
+            # Pass other options to stow
+            STOW_ARGS="$STOW_ARGS $1"
+            ;;
+        *)
+            # Package name
+            PACKAGES="$PACKAGES $1"
+            ;;
+    esac
+    shift
+done
+
+# Check if packages are specified
+if [ -z "$PACKAGES" ]; then
+    echo "Error: No packages specified."
+    show_help
+    exit 1
+fi
+
+# Set ignore patterns to prevent certain files from being stowed
+IGNORE_FLAGS="--ignore=\.stowed --ignore=\.stow-preinst --ignore=\.stow-postinst --ignore=\.stow-prerm --ignore=\.stow-postrm"
+
+# Function to run scripts if they exist and are executable
+run_script() {
+    SCRIPT_PATH="$1"
+    if [ -x "$SCRIPT_PATH" ]; then
+        "$SCRIPT_PATH"
+    fi
+}
+
+# Perform the operation for each package
+for PACKAGE in $PACKAGES; do
+    PACKAGE_DIR="$PACKAGE"
+
+    case "$OPERATION" in
+        stow)
+            run_script "$PACKAGE_DIR/.stow-preinst"
+            touch "$PACKAGE_DIR/.stowed"
+            stow $STOW_ARGS $IGNORE_FLAGS "$PACKAGE_DIR"
+            run_script "$PACKAGE_DIR/.stow-postinst"
+            ;;
+        unstow)
+            run_script "$PACKAGE_DIR/.stow-prerm"
+            rm -f "$PACKAGE_DIR/.stowed"
+            stow $STOW_ARGS $IGNORE_FLAGS -D "$PACKAGE_DIR"
+            run_script "$PACKAGE_DIR/.stow-postrm"
+            ;;
+        restow)
+            run_script "$PACKAGE_DIR/.stow-prerm"
+            rm -f "$PACKAGE_DIR/.stowed"
+            stow $STOW_ARGS $IGNORE_FLAGS -R "$PACKAGE_DIR"
+            run_script "$PACKAGE_DIR/.stow-postinst"
+            touch "$PACKAGE_DIR/.stowed"
+            ;;
+        *)
+            echo "Error: Unknown operation."
+            show_help
+            exit 1
+            ;;
+    esac
+done

@@ -1,0 +1,76 @@
+#!/bin/bash
+
+# build-stoww-package: script that builds a deb package of the stoww tool
+
+set -e  # Exit immediately on error
+
+# Variables
+GIT_REPO="jpasquier/stoww"
+BUILD_DIR=$(mktemp -d "${TMPDIR:-/tmp}/build-stoww-package.XXXXXXXX")
+OUTPUT_DIR=$(pwd)
+
+# Clean up temp directory on script exit
+trap 'rm -rf "$BUILD_DIR"' EXIT
+
+# Ensure necessary tools are installed
+for cmd in git fakeroot dpkg-deb; do
+    command -v $cmd >/dev/null 2>&1 || \
+      { echo >&2 "$cmd is required but not installed. Aborting."; exit 1; }
+done
+
+# Clone the repo to the build directory
+git clone "https://github.com/$GIT_REPO" "$BUILD_DIR"
+
+# Generate version information
+cd "$BUILD_DIR"
+VERSION=`git log --oneline | wc -l`-`git rev-parse --short HEAD`
+
+
+# Define destination directories
+PKG_DIR="$BUILD_DIR/pkg"
+DEB_DIR="$BUILD_DIR/deb"
+
+# Create necessary directories in the package structure
+mkdir -p "$PKG_DIR/usr/local/bin"
+mkdir -p "$PKG_DIR/usr/share/zsh/vendor-completions"
+mkdir -p "$PKG_DIR/DEBIAN"
+mkdir -p "$DEB_DIR"
+
+# Copy files to the target directories
+cp "$BUILD_DIR/stoww" "$PKG_DIR/usr/local/bin/"
+cp "$BUILD_DIR/zsh_completion" "$PKG_DIR/usr/share/zsh/vendor-completions/_stoww"
+
+# Ensure that files have the correct permissions
+chmod 755 "$PKG_DIR/usr/local/bin/stoww"
+chmod 644 "$PKG_DIR/usr/share/zsh/vendor-completions/_stoww"
+
+# Add the control file
+cat >"$PKG_DIR/DEBIAN/control" <<EOL
+Package: stoww
+Version: $VERSION
+Section: admin
+Priority: optional
+Architecture: all
+Depends: stow
+Suggests: zsh
+Maintainer: Jérôme Pasquier
+Description: A Wrapper for GNU Stow
+Homepage: https://github.com/$GIT_REPO
+EOL
+
+# Build the package using fakeroot
+fakeroot dpkg-deb --build "$PKG_DIR" "$DEB_DIR"
+
+# Avoid deleting empty system folders after removal
+DEB_FILE=($DEB_DIR/*.deb)
+ar x --output "$BUILD_DIR" "$DEB_FILE" data.tar.xz
+unxz "$BUILD_DIR/data.tar.xz"
+tar --delete --occurrence -f "$BUILD_DIR/data.tar" ./usr/local/bin/
+tar --delete --occurrence -f "$BUILD_DIR/data.tar" ./usr/share/zsh/vendor-completions/
+xz "$BUILD_DIR/data.tar"
+ar r "$DEB_FILE" "$BUILD_DIR/data.tar.xz"
+
+# Move the generated .deb package to the initial directory
+mv "$DEB_DIR"/*.deb "$OUTPUT_DIR"/
+
+echo "Package built successfully: $(ls "$OUTPUT_DIR"/*.deb)"
