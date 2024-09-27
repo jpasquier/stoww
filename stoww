@@ -65,13 +65,23 @@ if [ -z "$PACKAGES" ]; then
 fi
 
 # Set ignore patterns to prevent certain files from being stowed
-IGNORE_FLAGS="--ignore=\.stowed --ignore=\.stow-preinst --ignore=\.stow-postinst --ignore=\.stow-prerm --ignore=\.stow-postrm"
+IGNORE_FLAGS="--ignore=\.stowed --ignore=.*\.stow-.* --ignore=stow-.*"
 
 # Function to run scripts if they exist and are executable
 run_script() {
-    SCRIPT_PATH="$1"
-    if [ -x "$SCRIPT_PATH" ]; then
-        "$SCRIPT_PATH"
+    SCRIPT_TYPE="$1"
+    PACKAGE_DIR="$2"
+
+    HIDDEN_SCRIPT="$PACKAGE_DIR/.stow-$SCRIPT_TYPE"
+    NON_HIDDEN_SCRIPT="$PACKAGE_DIR/stow-$SCRIPT_TYPE"
+
+    if [ -x "$HIDDEN_SCRIPT" ] && [ -x "$NON_HIDDEN_SCRIPT" ]; then
+        echo "Error: Both $HIDDEN_SCRIPT and $NON_HIDDEN_SCRIPT exist. Please remove one."
+        exit 1
+    elif [ -x "$HIDDEN_SCRIPT" ]; then
+        "$HIDDEN_SCRIPT"
+    elif [ -x "$NON_HIDDEN_SCRIPT" ]; then
+        "$NON_HIDDEN_SCRIPT"
     fi
 }
 
@@ -81,22 +91,22 @@ for PACKAGE in $PACKAGES; do
 
     case "$OPERATION" in
         stow)
-            run_script "$PACKAGE_DIR/.stow-preinst"
+            run_script "preinst" "$PACKAGE_DIR"
             touch "$PACKAGE_DIR/.stowed"
             stow $STOW_ARGS $IGNORE_FLAGS "$PACKAGE_DIR"
-            run_script "$PACKAGE_DIR/.stow-postinst"
+            run_script "postinst" "$PACKAGE_DIR"
             ;;
         unstow)
-            run_script "$PACKAGE_DIR/.stow-prerm"
+            run_script "prerm" "$PACKAGE_DIR"
             rm -f "$PACKAGE_DIR/.stowed"
             stow $STOW_ARGS $IGNORE_FLAGS -D "$PACKAGE_DIR"
-            run_script "$PACKAGE_DIR/.stow-postrm"
+            run_script "postrm" "$PACKAGE_DIR"
             ;;
         restow)
-            run_script "$PACKAGE_DIR/.stow-prerm"
+            run_script "prerm" "$PACKAGE_DIR"
             rm -f "$PACKAGE_DIR/.stowed"
             stow $STOW_ARGS $IGNORE_FLAGS -R "$PACKAGE_DIR"
-            run_script "$PACKAGE_DIR/.stow-postinst"
+            run_script "postinst" "$PACKAGE_DIR"
             touch "$PACKAGE_DIR/.stowed"
             ;;
         *)

@@ -8,6 +8,7 @@ set -e  # Exit immediately on error
 GIT_REPO="jpasquier/stoww"
 BUILD_DIR=$(mktemp -d "${TMPDIR:-/tmp}/build-stoww-package.XXXXXXXX")
 OUTPUT_DIR=$(pwd)
+USE_LOCAL=0  # Flag to indicate if local repo should be used
 
 # Clean up temp directory on script exit
 trap 'rm -rf "$BUILD_DIR"' EXIT
@@ -18,13 +19,52 @@ for cmd in git fakeroot dpkg-deb; do
       { echo >&2 "$cmd is required but not installed. Aborting."; exit 1; }
 done
 
-# Clone the repo to the build directory
-git clone "https://github.com/$GIT_REPO" "$BUILD_DIR"
+# Parse command-line arguments
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --local)
+            USE_LOCAL=1
+            shift
+            ;;
+        -h|--help)
+            echo "Usage: $0 [--local]"
+            echo "  --local    Build package from the current local git repository"
+            exit 0
+            ;;
+        *)
+            echo "Unknown option: $1"
+            echo "Use -h or --help for usage information."
+            exit 1
+            ;;
+    esac
+done
+
+# If using local repository, copy current directory to build directory
+if [[ $USE_LOCAL -eq 1 ]]; then
+    echo "Building from local repository..."
+    # Ensure the current directory is a git repository
+    if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+        echo "Error: Current directory is not a git repository."
+        exit 1
+    fi
+    # Copy the current directory to the build directory, excluding the .git folder
+    rsync -a ./ "$BUILD_DIR/"
+else
+    echo "Cloning repository from GitHub..."
+    # Clone the repo to the build directory
+    git clone "https://github.com/$GIT_REPO" "$BUILD_DIR"
+fi
 
 # Generate version information
 cd "$BUILD_DIR"
-VERSION=`git log --oneline | wc -l`-`git rev-parse --short HEAD`
+COMMIT_COUNT=$(git rev-list --count HEAD)
+COMMIT_HASH=$(git rev-parse --short HEAD)
+VERSION="$COMMIT_COUNT-$COMMIT_HASH"
 
+# Check for uncommitted changes
+if [[ -n $(git status --porcelain) ]]; then
+    VERSION="${VERSION}-dirty"
+fi
 
 # Define destination directories
 PKG_DIR="$BUILD_DIR/pkg"
