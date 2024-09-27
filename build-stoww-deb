@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# build-stoww-package: script that builds a deb package of the stoww tool
+# build-stoww-deb: script that builds a Debian package of the stoww tool
 
 set -e  # Exit immediately on error
 
@@ -71,17 +71,17 @@ PKG_DIR="$BUILD_DIR/pkg"
 DEB_DIR="$BUILD_DIR/deb"
 
 # Create necessary directories in the package structure
-mkdir -p "$PKG_DIR/usr/local/bin"
+mkdir -p "$PKG_DIR/usr/bin"
 mkdir -p "$PKG_DIR/usr/share/zsh/vendor-completions"
 mkdir -p "$PKG_DIR/DEBIAN"
 mkdir -p "$DEB_DIR"
 
 # Copy files to the target directories
-cp "$BUILD_DIR/stoww" "$PKG_DIR/usr/local/bin/"
+cp "$BUILD_DIR/stoww" "$PKG_DIR/usr/bin/"
 cp "$BUILD_DIR/zsh_completion" "$PKG_DIR/usr/share/zsh/vendor-completions/_stoww"
 
 # Ensure that files have the correct permissions
-chmod 755 "$PKG_DIR/usr/local/bin/stoww"
+chmod 755 "$PKG_DIR/usr/bin/stoww"
 chmod 644 "$PKG_DIR/usr/share/zsh/vendor-completions/_stoww"
 
 # Add the control file
@@ -96,19 +96,12 @@ Suggests: zsh
 Maintainer: Jérôme Pasquier
 Description: A Wrapper for GNU Stow
 Homepage: https://github.com/$GIT_REPO
+Bugs: https://github.com/$GIT_REPO/issues
 EOL
 
 # Build the package using fakeroot
+echo "Building the Debian package..."
 fakeroot dpkg-deb --build "$PKG_DIR" "$DEB_DIR"
-
-# Avoid deleting empty system folders after removal
-DEB_FILE=($DEB_DIR/*.deb)
-ar x --output "$BUILD_DIR" "$DEB_FILE" data.tar.xz
-unxz "$BUILD_DIR/data.tar.xz"
-tar --delete --occurrence -f "$BUILD_DIR/data.tar" ./usr/local/bin/
-tar --delete --occurrence -f "$BUILD_DIR/data.tar" ./usr/share/zsh/vendor-completions/
-xz "$BUILD_DIR/data.tar"
-ar r "$DEB_FILE" "$BUILD_DIR/data.tar.xz"
 
 # Move the generated .deb package to the initial directory
 mv "$DEB_DIR"/*.deb "$OUTPUT_DIR"/
