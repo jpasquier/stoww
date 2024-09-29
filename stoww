@@ -24,7 +24,6 @@ EOF
 # Initialize variables
 OPERATION="stow"  # Default operation
 STOW_ARGS=""
-PACKAGES=""
 
 # Parse command-line arguments
 while [ "$#" -gt 0 ]; do
@@ -32,14 +31,17 @@ while [ "$#" -gt 0 ]; do
         -D|--delete)
             OPERATION="unstow"
             STOW_ARGS="$STOW_ARGS $1"
+            shift
             ;;
         -S|--stow)
             OPERATION="stow"
             STOW_ARGS="$STOW_ARGS $1"
+            shift
             ;;
         -R|--restow)
             OPERATION="restow"
             STOW_ARGS="$STOW_ARGS $1"
+            shift
             ;;
         -h|--help)
             show_help
@@ -48,17 +50,17 @@ while [ "$#" -gt 0 ]; do
         -*)
             # Pass other options to stow
             STOW_ARGS="$STOW_ARGS $1"
+            shift
             ;;
         *)
-            # Package name
-            PACKAGES="$PACKAGES $1"
+            # Packages -- stop parsing options
+            break
             ;;
     esac
-    shift
 done
 
 # Check if packages are specified
-if [ -z "$PACKAGES" ]; then
+if [ "$#" -eq 0 ]; then
     echo "Error: No packages specified."
     show_help
     exit 1
@@ -86,26 +88,26 @@ run_script() {
 }
 
 # Perform the operation for each package
-for PACKAGE in $PACKAGES; do
+for PACKAGE in "$@"; do
     PACKAGE_DIR="$PACKAGE"
 
     case "$OPERATION" in
         stow)
             run_script "preinst" "$PACKAGE_DIR"
             touch "$PACKAGE_DIR/.stowed"
-            stow $STOW_ARGS $IGNORE_FLAGS "$PACKAGE_DIR"
+            eval "stow $STOW_ARGS $IGNORE_FLAGS \"$PACKAGE_DIR\""
             run_script "postinst" "$PACKAGE_DIR"
             ;;
         unstow)
             run_script "prerm" "$PACKAGE_DIR"
             rm -f "$PACKAGE_DIR/.stowed"
-            stow $STOW_ARGS $IGNORE_FLAGS -D "$PACKAGE_DIR"
+            eval "stow $STOW_ARGS $IGNORE_FLAGS -D \"$PACKAGE_DIR\""
             run_script "postrm" "$PACKAGE_DIR"
             ;;
         restow)
             run_script "prerm" "$PACKAGE_DIR"
             rm -f "$PACKAGE_DIR/.stowed"
-            stow $STOW_ARGS $IGNORE_FLAGS -R "$PACKAGE_DIR"
+            eval "stow $STOW_ARGS $IGNORE_FLAGS -R \"$PACKAGE_DIR\""
             run_script "postinst" "$PACKAGE_DIR"
             touch "$PACKAGE_DIR/.stowed"
             ;;
