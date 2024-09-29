@@ -87,6 +87,20 @@ run_script() {
     fi
 }
 
+# Function to run stow and filter out specific warning messages
+run_stow() {
+    TMPFILE=$(mktemp)
+    stow "$@" 2> "$TMPFILE"
+    STOW_EXIT_CODE=$?
+
+    # Output the filtered stderr
+    grep -Ev '^BUG in find_stowed_path\? Absolute/relative mismatch between Stow dir' "$TMPFILE" >&2
+
+    rm -f "$TMPFILE"
+
+    return $STOW_EXIT_CODE
+}
+
 # Perform the operation for each package
 for PACKAGE in "$@"; do
     PACKAGE_DIR="$PACKAGE"
@@ -95,19 +109,19 @@ for PACKAGE in "$@"; do
         stow)
             run_script "preinst" "$PACKAGE_DIR"
             touch "$PACKAGE_DIR/.stowed"
-            eval "stow $STOW_ARGS $IGNORE_FLAGS \"$PACKAGE_DIR\""
+            run_stow $STOW_ARGS $IGNORE_FLAGS "$PACKAGE_DIR"
             run_script "postinst" "$PACKAGE_DIR"
             ;;
         unstow)
             run_script "prerm" "$PACKAGE_DIR"
             rm -f "$PACKAGE_DIR/.stowed"
-            eval "stow $STOW_ARGS $IGNORE_FLAGS -D \"$PACKAGE_DIR\""
+            run_stow $STOW_ARGS $IGNORE_FLAGS -D "$PACKAGE_DIR"
             run_script "postrm" "$PACKAGE_DIR"
             ;;
         restow)
             run_script "prerm" "$PACKAGE_DIR"
             rm -f "$PACKAGE_DIR/.stowed"
-            eval "stow $STOW_ARGS $IGNORE_FLAGS -R \"$PACKAGE_DIR\""
+            run_stow $STOW_ARGS $IGNORE_FLAGS -R "$PACKAGE_DIR"
             run_script "postinst" "$PACKAGE_DIR"
             touch "$PACKAGE_DIR/.stowed"
             ;;
